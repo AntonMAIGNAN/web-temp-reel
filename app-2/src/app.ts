@@ -12,13 +12,19 @@ const STATES = {
 } as const;
 type State = (typeof STATES)[keyof typeof STATES];
 
+const assertOrigin = (origin: string | unknown): string => {
+  if (typeof origin !== "string") {
+    throw new Error("Missing Origin header");
+  }
+
+  return origin;
+};
+
 const KNOWNS: Map<string, State> = new Map();
 
 app.post(`/${STATES.SYN}`, async (req, res) => {
-  const from = req.headers.origin;
-  if (typeof from !== "string") {
-    return res.status(400).send({ error: "Missing Origin header" });
-  }
+  const from = assertOrigin(req.headers.origin);
+
   console.log(`Received ${STATES.SYN} request`);
   KNOWNS.set(from, STATES.SYN);
   const { status } = await axios.post(`${from}/${STATES.SYN_ACK}`, undefined, {
@@ -28,10 +34,8 @@ app.post(`/${STATES.SYN}`, async (req, res) => {
 });
 
 app.post(`/${STATES.SYN_ACK}`, async (req, res) => {
-  const from = req.headers.origin;
-  if (typeof from !== "string") {
-    return res.status(400).send({ error: "Missing Origin header" });
-  }
+  const from = assertOrigin(req.headers.origin);
+
   console.log(`Received ${STATES.SYN_ACK} request`);
   KNOWNS.set(from, STATES.SYN_ACK);
   const { status } = await axios.post(`${from}/${STATES.ACK}`, undefined, {
@@ -41,13 +45,18 @@ app.post(`/${STATES.SYN_ACK}`, async (req, res) => {
 });
 
 app.post(`/${STATES.ACK}`, async (req, res) => {
-  const from = req.headers.origin;
-  if (typeof from !== "string") {
-    return res.status(400).send({ error: "Missing Origin header" });
-  }
+  const from = assertOrigin(req.headers.origin);
+
   console.log(`Received ${STATES.ACK} request`);
   KNOWNS.set(from, STATES.ACK);
   res.status(200).send({ message: "ACK" });
+});
+
+app.post(`/forget`, async (req, res) => {
+  const from = assertOrigin(req.headers.origin);
+  KNOWNS.delete(from);
+  console.log("Known host has been forgotten", { host: from });
+  res.sendStatus(200);
 });
 
 app.listen(PORT, async () => {
