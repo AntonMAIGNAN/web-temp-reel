@@ -4,6 +4,11 @@ import { PORT, TARGET_URL, BASE_URL } from "./config.ts";
 
 const app = express();
 
+const axiosInstance = axios.create({
+  headers: { Origin: BASE_URL },
+  timeout: 5000,
+});
+
 const STATES = {
   NONE: "none",
   SYN: "syn",
@@ -20,6 +25,13 @@ const assertOrigin = (origin: string | unknown): string => {
   return origin;
 };
 
+const stateRank: Record<State, number> = {
+  [STATES.NONE]: 0,
+  [STATES.SYN]: 1,
+  [STATES.SYN_ACK]: 2,
+  [STATES.ACK]: 3,
+};
+
 const KNOWNS: Map<string, State> = new Map();
 
 async function isPeerAlive() {
@@ -30,15 +42,36 @@ async function isPeerAlive() {
     return false;
   }
 }
+const updateKnownState = (from: string, state: State) => {
+  const current = KNOWNS.get(from);
+  if (!current || stateRank[state] > stateRank[current]) {
+    KNOWNS.set(from, state);
+  }
+};
+
+const exp_backoff = async <ICallbackReturn>(
+  attempt: number,
+  maxDelay: number,
+  callback: () => ICallbackReturn | Promise<ICallbackReturn>,
+): Promise<ICallbackReturn> => {
+  const delay = Math.min(1000 * 2 ** attempt, maxDelay);
+  await new Promise((resolve) => setTimeout(resolve, delay));
+
+  try {
+    console.log(`Attempt ${attempt}`);
+    return await callback();
+  } catch (error) {
+    console.error(`Attempt ${attempt + 1} failed`, { error });
+    return exp_backoff(attempt + 1, maxDelay, callback);
+  }
+};
 
 app.post(`/${STATES.SYN}`, async (req, res) => {
   const from = assertOrigin(req.headers.origin);
 
   console.log(`Received ${STATES.SYN} request`);
-  KNOWNS.set(from, STATES.SYN);
-  const { status } = await axios.post(`${from}/${STATES.SYN_ACK}`, undefined, {
-    headers: { Origin: BASE_URL },
-  });
+  updateKnownState(from, STATES.SYN);
+  const { status } = await axiosInstance.post(`${from}/${STATES.SYN_ACK}`);
   return res.sendStatus(status);
 });
 
@@ -46,10 +79,8 @@ app.post(`/${STATES.SYN_ACK}`, async (req, res) => {
   const from = assertOrigin(req.headers.origin);
 
   console.log(`Received ${STATES.SYN_ACK} request`);
-  KNOWNS.set(from, STATES.SYN_ACK);
-  const { status } = await axios.post(`${from}/${STATES.ACK}`, undefined, {
-    headers: { Origin: BASE_URL },
-  });
+  updateKnownState(from, STATES.SYN_ACK);
+  const { status } = await axiosInstance.post(`${from}/${STATES.ACK}`);
   return res.sendStatus(status);
 });
 
@@ -57,7 +88,7 @@ app.post(`/${STATES.ACK}`, async (req, res) => {
   const from = assertOrigin(req.headers.origin);
 
   console.log(`Received ${STATES.ACK} request`);
-  KNOWNS.set(from, STATES.ACK);
+  updateKnownState(from, STATES.ACK);
   res.status(200).send({ message: "ACK" });
 });
 
@@ -75,26 +106,18 @@ app.get("/health", (_req, res) => {
 app.listen(PORT, async () => {
   KNOWNS.set(TARGET_URL, STATES.NONE);
 
-  try {
-    await axios.post(`${TARGET_URL}/syn`, undefined, {
-      headers: { Origin: BASE_URL },
-    });
-  } catch (error) {
-    console.error("Error occurred while fetching from app-2:", error);
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  console.log({ knowns: Object.fromEntries(KNOWNS) });
-
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  await axios.post(`${TARGET_URL}/forget`, undefined, {
-    headers: { Origin: BASE_URL },
+  await exp_backoff(0, 30000, async () => {
+    await axiosInstance.post(`${TARGET_URL}/syn`);
   });
-  console.log("Sent forget request to app-2");
 
-  while (true) {
-    const peerAlive = await isPeerAlive();
-    console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  console.log({
+    knowns: Object.fromEntries(KNOWNS),
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  await exp_backoff(0, 30000, async () => {
+    await axiosInstance.post(`${TARGET_URL}/forget`);
+    console.log("Sent forget request to app-2");
+  });
 });
