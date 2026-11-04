@@ -13,7 +13,6 @@ type KnownState = Map<string, State>;
 
 export type AppConfig = {
   baseUrl: string;
-  targetUrl: string;
 };
 
 const stateRank: Record<State, number> = {
@@ -67,12 +66,10 @@ const expBackoff = async <T>({
   }
 };
 
-export const bootstrap = (
-  config: AppConfig,
-  axiosInstance: AxiosInstance,
-): Express => {
+export const bootstrap = (axiosInstance: AxiosInstance): Express => {
   const app = express();
-  const knowns: KnownState = new Map([[config.targetUrl, STATES.NONE]]);
+
+  const knowns: KnownState = new Map();
   const messages: Array<{
     action: string;
     payload?: Record<string, unknown>;
@@ -81,6 +78,7 @@ export const bootstrap = (
   }> = [];
 
   app.use(express.json());
+
   app.locals.knowns = knowns;
   app.locals.messages = messages;
 
@@ -144,31 +142,32 @@ export const bootstrap = (
 
 export const startHandshake = async (
   app: Express,
-  config: AppConfig,
   axiosInstance: AxiosInstance,
 ) => {
   const knowns = app.locals.knowns as KnownState;
 
-  await expBackoff({
-    attempt: 0,
-    maxDelay: 30000,
-    callback: () => axiosInstance.post(`${config.targetUrl}/syn`),
-  });
-
   while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-    const peerAlive = await expBackoff({
-      attempt: 0,
-      maxDelay: 30000,
-      callback: async () => {
-        try {
-          await axiosInstance.get(`${config.targetUrl}/health`);
-          return true;
-        } catch {
-          return false;
-        }
-      },
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    const healthChecks = Array.from(knowns.entries()).map(([host, state]) => {
+      if (state === STATES.ACK) {
+        expBackoff({
+          attempt: 1,
+          maxDelay: 30000,
+          callback: async () => {
+            try {
+              await axiosInstance.get(`${host}/health`);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        });
+      }
     });
-    console.log({ knowns: Object.fromEntries(knowns), peerAlive });
+
+    await Promise.all(healthChecks);
+
+    console.log({ knowns: Object.fromEntries(knowns) });
   }
 };
