@@ -22,6 +22,15 @@ const assertOrigin = (origin: string | unknown): string => {
 
 const KNOWNS: Map<string, State> = new Map();
 
+async function isPeerAlive() {
+  try {
+    await axios.get(`${TARGET_URL}/health`, { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 app.post(`/${STATES.SYN}`, async (req, res) => {
   const from = assertOrigin(req.headers.origin);
 
@@ -59,6 +68,10 @@ app.post(`/forget`, async (req, res) => {
   res.sendStatus(200);
 });
 
+app.get("/health", (_req, res) => {
+  res.sendStatus(200);
+});
+
 app.listen(PORT, async () => {
   KNOWNS.set(TARGET_URL, STATES.NONE);
 
@@ -78,4 +91,10 @@ app.listen(PORT, async () => {
     headers: { Origin: BASE_URL },
   });
   console.log("Sent forget request to app-2");
+
+  while (true) {
+    const peerAlive = await isPeerAlive();
+    console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
 });
