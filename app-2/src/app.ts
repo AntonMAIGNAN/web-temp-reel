@@ -130,6 +130,8 @@ app.listen(PORT, async () => {
   });
 
   while (true) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
     const peerAlive = await exp_backoff({
       attempt: 0,
       maxDelay: 30000,
@@ -137,9 +139,5 @@ app.listen(PORT, async () => {
     });
 
     console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-    console.log({
-      knowns: Object.fromEntries(KNOWNS),
-    });
   }
 });
