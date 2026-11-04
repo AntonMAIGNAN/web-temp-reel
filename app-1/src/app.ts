@@ -36,7 +36,7 @@ const KNOWNS: Map<string, State> = new Map();
 
 async function isPeerAlive() {
   try {
-    await axios.get(`${TARGET_URL}/health`, { timeout: 2000 });
+    await axios.get(`${TARGET_URL}/health`);
     return true;
   } catch {
     return false;
@@ -129,18 +129,15 @@ app.listen(PORT, async () => {
     },
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  console.log({
-    knowns: Object.fromEntries(KNOWNS),
-  });
+  while (true) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  await exp_backoff({
-    attempt: 0,
-    maxDelay: 30000,
-    callback: async () => {
-      await axiosInstance.post(`${TARGET_URL}/forget`);
-      console.log("Sent forget request to app-2");
-    },
-  });
+    const peerAlive = await exp_backoff({
+      attempt: 0,
+      maxDelay: 30000,
+      callback: isPeerAlive,
+    });
+
+    console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
+  }
 });
