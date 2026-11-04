@@ -1,166 +1,23 @@
-import express from "express";
 import axios from "axios";
+import { bootstrap, startHandshake } from "@web/common";
 import { PORT, TARGET_URL, BASE_URL } from "./config.ts";
-
-const app = express();
 
 const axiosInstance = axios.create({
   headers: { Origin: BASE_URL },
   timeout: 5000,
 });
 
-const KNOWNS: Map<string, State> = new Map();
-
-type Message = {
-  action: string;
-  payload?: Record<string, unknown>;
-  from: string;
-  date: Date;
-};
-const MESSAGES: Array<Message> = [];
-
-// SYNC STATEMENTS
-const STATES = {
-  NONE: "none",
-  SYN: "syn",
-  SYN_ACK: "syn-ack",
-  ACK: "ack",
-} as const;
-type State = (typeof STATES)[keyof typeof STATES];
-const stateRank: Record<State, number> = {
-  [STATES.NONE]: 0,
-  [STATES.SYN]: 1,
-  [STATES.SYN_ACK]: 2,
-  [STATES.ACK]: 3,
+const config = {
+  baseUrl: BASE_URL,
+  targetUrl: TARGET_URL,
 };
 
-// UTILITY FUNCTIONS
-const assertOrigin = (origin: string | unknown): string => {
-  if (typeof origin !== "string") {
-    throw new Error("Missing Origin header");
-  }
+const app = bootstrap(config, axiosInstance);
 
-  return origin;
-};
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 
-async function isPeerAlive() {
-  try {
-    await axios.get(`${TARGET_URL}/health`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-const updateKnownState = (from: string, state: State) => {
-  const current = KNOWNS.get(from);
-  if (!current || stateRank[state] > stateRank[current]) {
-    KNOWNS.set(from, state);
-  }
-};
-
-const exp_backoff = async <ICallbackReturn>({
-  attempt,
-  maxAttempts = 5,
-  maxDelay,
-  callback,
-}: {
-  attempt: number;
-  maxDelay: number;
-  maxAttempts?: number;
-  callback: () => ICallbackReturn | Promise<ICallbackReturn>;
-}): Promise<ICallbackReturn> => {
-  const delay = Math.min(1000 * 2 ** attempt, maxDelay);
-  await new Promise((resolve) => setTimeout(resolve, delay));
-
-  try {
-    console.log(`Attempt ${attempt}`);
-    return await callback();
-  } catch (error) {
-    console.error(`Attempt ${attempt + 1} failed`, { error });
-
-    if (attempt >= (maxAttempts || 5)) {
-      throw new Error(`Failed after ${attempt + 1} attempts`);
-    }
-
-    return exp_backoff({
-      attempt: attempt + 1,
-      maxDelay,
-      callback,
-    });
-  }
-};
-
-app.post(`/${STATES.SYN}`, async (req, res) => {
-  const from = assertOrigin(req.headers.origin);
-
-  console.log(`Received ${STATES.SYN} request`);
-  updateKnownState(from, STATES.SYN);
-  const { status } = await axiosInstance.post(`${from}/${STATES.SYN_ACK}`);
-  return res.sendStatus(status);
-});
-
-app.post(`/${STATES.SYN_ACK}`, async (req, res) => {
-  const from = assertOrigin(req.headers.origin);
-
-  console.log(`Received ${STATES.SYN_ACK} request`);
-  updateKnownState(from, STATES.SYN_ACK);
-  const { status } = await axiosInstance.post(`${from}/${STATES.ACK}`);
-  return res.sendStatus(status);
-});
-
-app.post(`/${STATES.ACK}`, async (req, res) => {
-  const from = assertOrigin(req.headers.origin);
-
-  console.log(`Received ${STATES.ACK} request`);
-  updateKnownState(from, STATES.ACK);
-  res.status(200).send({ message: "ACK" });
-});
-
-app.post(`/forget`, async (req, res) => {
-  const from = assertOrigin(req.headers.origin);
-  KNOWNS.delete(from);
-  console.log("Known host has been forgotten", { host: from });
-  res.sendStatus(200);
-});
-
-app.get("/health", (_req, res) => {
-  res.sendStatus(200);
-});
-
-app.post("/ingress", (req, res) => {
-  const { action, payload } = req.body;
-
-  MESSAGES.push({
-    action: action ?? "unknown",
-    payload,
-    from: assertOrigin(req.headers.origin),
-    date: new Date(),
+  startHandshake(app, config, axiosInstance).catch((error) => {
+    console.error("Handshake failed:", error);
   });
-
-  console.log("Received message", { action, payload });
-  res.sendStatus(200);
-});
-
-app.listen(PORT, async () => {
-  KNOWNS.set(TARGET_URL, STATES.NONE);
-
-  await exp_backoff({
-    attempt: 0,
-    maxDelay: 30000,
-    callback: async () => {
-      await axiosInstance.post(`${TARGET_URL}/syn`);
-    },
-  });
-
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
-    const peerAlive = await exp_backoff({
-      attempt: 0,
-      maxDelay: 30000,
-      callback: isPeerAlive,
-    });
-
-    console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
-  }
 });
