@@ -32,6 +32,7 @@ const assertOrigin = (origin: string | string[] | undefined): string => {
 const updateKnownState = (knowns: KnownState, from: string, state: State) => {
   const current = knowns.get(from);
   if (!current || stateRank[state] > stateRank[current]) {
+    console.log(`Updating known state for ${from} from ${current} to ${state}`);
     knowns.set(from, state);
   }
 };
@@ -116,8 +117,8 @@ export const bootstrap = (axiosInstance: AxiosInstance): Express => {
     const origin = assertOrigin(req.headers.origin);
 
     if (
-      !app.locals.knowns.has(origin) &&
-      app.locals.knows.get(origin) !== STATES.ACK
+      !app.locals.knowns.has(origin) ||
+      ![STATES.SYN_ACK, STATES.ACK].includes(app.locals.knowns.get(origin))
     ) {
       return res.status(403).send({ error: "Origin not allowed" });
     }
@@ -129,11 +130,11 @@ export const bootstrap = (axiosInstance: AxiosInstance): Express => {
     messages.push({
       action,
       payload,
-      from: assertOrigin(req.headers.origin),
+      from: origin,
       date: new Date(),
     });
 
-    console.log("Received message", { action, payload });
+    console.log("Received message from ", origin, { action, payload });
     return res.sendStatus(200);
   });
 

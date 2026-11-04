@@ -7,10 +7,6 @@ const axiosInstance = axios.create({
   timeout: 5000,
 });
 
-const config = {
-  baseUrl: BASE_URL,
-};
-
 const app = bootstrap(axiosInstance);
 
 app.listen(PORT, () => {
