@@ -30,11 +30,7 @@ const assertOrigin = (origin: string | string[] | undefined): string => {
   return origin;
 };
 
-const updateKnownState = (
-  knowns: KnownState,
-  from: string,
-  state: State,
-) => {
+const updateKnownState = (knowns: KnownState, from: string, state: State) => {
   const current = knowns.get(from);
   if (!current || stateRank[state] > stateRank[current]) {
     knowns.set(from, state);
@@ -119,12 +115,26 @@ export const bootstrap = (
 
   app.post("/ingress", (req, res) => {
     const { action, payload } = req.body;
+    const origin = assertOrigin(req.headers.origin);
+
+    if (
+      !app.locals.knowns.has(origin) &&
+      app.locals.knows.get(origin) !== STATES.ACK
+    ) {
+      return res.status(403).send({ error: "Origin not allowed" });
+    }
+
+    if (!action || typeof action !== "string") {
+      return res.status(400).send({ error: "Missing or invalid action" });
+    }
+
     messages.push({
-      action: action ?? "unknown",
+      action,
       payload,
       from: assertOrigin(req.headers.origin),
       date: new Date(),
     });
+
     console.log("Received message", { action, payload });
     return res.sendStatus(200);
   });
