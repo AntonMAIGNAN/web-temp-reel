@@ -9,6 +9,17 @@ const axiosInstance = axios.create({
   timeout: 5000,
 });
 
+const KNOWNS: Map<string, State> = new Map();
+
+type Message = {
+  action: string;
+  payload?: Record<string, unknown>;
+  from: string;
+  date: Date;
+};
+const MESSAGES: Array<Message> = [];
+
+// SYNC STATEMENTS
 const STATES = {
   NONE: "none",
   SYN: "syn",
@@ -16,15 +27,6 @@ const STATES = {
   ACK: "ack",
 } as const;
 type State = (typeof STATES)[keyof typeof STATES];
-
-const assertOrigin = (origin: string | unknown): string => {
-  if (typeof origin !== "string") {
-    throw new Error("Missing Origin header");
-  }
-
-  return origin;
-};
-
 const stateRank: Record<State, number> = {
   [STATES.NONE]: 0,
   [STATES.SYN]: 1,
@@ -32,7 +34,14 @@ const stateRank: Record<State, number> = {
   [STATES.ACK]: 3,
 };
 
-const KNOWNS: Map<string, State> = new Map();
+// UTILITY FUNCTIONS
+const assertOrigin = (origin: string | unknown): string => {
+  if (typeof origin !== "string") {
+    throw new Error("Missing Origin header");
+  }
+
+  return origin;
+};
 
 async function isPeerAlive() {
   try {
@@ -115,6 +124,20 @@ app.post(`/forget`, async (req, res) => {
 });
 
 app.get("/health", (_req, res) => {
+  res.sendStatus(200);
+});
+
+app.post("/ingress", (req, res) => {
+  const { action, payload } = req.body;
+
+  MESSAGES.push({
+    action: action ?? "unknown",
+    payload,
+    from: assertOrigin(req.headers.origin),
+    date: new Date(),
+  });
+
+  console.log("Received message", { action, payload });
   res.sendStatus(200);
 });
 
