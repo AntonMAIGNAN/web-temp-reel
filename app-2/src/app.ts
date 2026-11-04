@@ -1,6 +1,6 @@
 import axios from "axios";
 import { bootstrap, startHandshake } from "@web/common";
-import { PORT, TARGET_URL, BASE_URL } from "./config.ts";
+import { PORT, BASE_URL } from "./config.ts";
 
 const axiosInstance = axios.create({
   headers: { Origin: BASE_URL },
@@ -9,15 +9,14 @@ const axiosInstance = axios.create({
 
 const config = {
   baseUrl: BASE_URL,
-  targetUrl: TARGET_URL,
 };
 
-const app = bootstrap(config, axiosInstance);
+const app = bootstrap(axiosInstance);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 
-  startHandshake(app, config, axiosInstance).catch((error) => {
+  startHandshake(app, axiosInstance).catch((error) => {
     console.error("Handshake failed:", error);
   });
 });
