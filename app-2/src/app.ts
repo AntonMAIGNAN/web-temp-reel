@@ -49,11 +49,17 @@ const updateKnownState = (from: string, state: State) => {
   }
 };
 
-const exp_backoff = async <ICallbackReturn>(
-  attempt: number,
-  maxDelay: number,
-  callback: () => ICallbackReturn | Promise<ICallbackReturn>,
-): Promise<ICallbackReturn> => {
+const exp_backoff = async <ICallbackReturn>({
+  attempt,
+  maxAttempts = 5,
+  maxDelay,
+  callback,
+}: {
+  attempt: number;
+  maxDelay: number;
+  maxAttempts?: number;
+  callback: () => ICallbackReturn | Promise<ICallbackReturn>;
+}): Promise<ICallbackReturn> => {
   const delay = Math.min(1000 * 2 ** attempt, maxDelay);
   await new Promise((resolve) => setTimeout(resolve, delay));
 
@@ -62,7 +68,16 @@ const exp_backoff = async <ICallbackReturn>(
     return await callback();
   } catch (error) {
     console.error(`Attempt ${attempt + 1} failed`, { error });
-    return exp_backoff(attempt + 1, maxDelay, callback);
+
+    if (attempt >= (maxAttempts || 5)) {
+      throw new Error(`Failed after ${attempt + 1} attempts`);
+    }
+
+    return exp_backoff({
+      attempt: attempt + 1,
+      maxDelay,
+      callback,
+    });
   }
 };
 
@@ -106,12 +121,21 @@ app.get("/health", (_req, res) => {
 app.listen(PORT, async () => {
   KNOWNS.set(TARGET_URL, STATES.NONE);
 
-  await exp_backoff(0, 30000, async () => {
-    await axiosInstance.post(`${TARGET_URL}/syn`);
+  await exp_backoff({
+    attempt: 0,
+    maxDelay: 30000,
+    callback: async () => {
+      await axiosInstance.post(`${TARGET_URL}/syn`);
+    },
   });
 
   while (true) {
-    const peerAlive = await isPeerAlive();
+    const peerAlive = await exp_backoff({
+      attempt: 0,
+      maxDelay: 30000,
+      callback: isPeerAlive,
+    });
+
     console.log({ knowns: Object.fromEntries(KNOWNS), peerAlive });
     await new Promise((resolve) => setTimeout(resolve, 5000));
     console.log({
