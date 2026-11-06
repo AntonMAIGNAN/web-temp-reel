@@ -8,7 +8,6 @@ export type OriginCheck =
 
 export function checkOrigin(origin: unknown): OriginCheck {
   const parsed = OriginHeadersSchema.safeParse({ origin });
-
   if (!parsed.success) {
     logger.warn("Invalid or missing Origin header", {
       statusCode: status.BAD_REQUEST,
