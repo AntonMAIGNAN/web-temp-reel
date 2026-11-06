@@ -5,13 +5,18 @@ import express, {
   type Response,
 } from "express";
 import { type AxiosInstance } from "axios";
-import { type KnownState } from "./types.ts";
-import { receiveIngress, type Message } from "./actions/ingress.action.ts";
+import { type KnownState, type Peers } from "./types.ts";
+import { type Message } from "./actions/ingress.action.ts";
 import { isAuthorizedState } from "./constants.ts";
 import { logger } from "./logger.ts";
 import { createUrlRouter } from "./routers/url.router.ts";
+import { createPeersRouter } from "./routers/peers.router.ts";
+import {
+  registerToBroker,
+  unregisterFromBroker,
+} from "./actions/peers.action.ts";
 
-export { logger };
+export { logger, registerToBroker, unregisterFromBroker };
 
 const expBackoff = async <T>({
   attempt,
@@ -46,15 +51,23 @@ const expBackoff = async <T>({
   }
 };
 
-export const bootstrap = (axiosInstance: AxiosInstance): Express => {
+export const bootstrap = (
+  axiosInstance: AxiosInstance,
+  { brokerUrl }: { brokerUrl: string },
+): Express => {
   const app = express();
   const knowns: KnownState = new Map();
+  const peers: Peers = new Map();
   const messages: Message[] = [];
   const processedIngressRequests = new Set<string>();
 
   app.use(express.json());
   app.locals.knowns = knowns;
+  app.locals.peers = peers;
   app.locals.messages = messages;
+
+  app.use(createPeersRouter({ peers, brokerUrl }));
+
   app.use(
     createUrlRouter({
       axiosInstance,

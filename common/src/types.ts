@@ -7,6 +7,8 @@ type OtherStatus = Exclude<StatusCodes, Status200>;
 
 export type KnownState = Map<string, State>;
 
+export type Peers = Map<string, string>;
+
 export type Action<T> =
   | { status: Status200; data: T; error?: null }
   | { status: OtherStatus; data: T; error: string };
