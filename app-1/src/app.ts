@@ -1,5 +1,5 @@
 import axios from "axios";
-import { bootstrap, startHandshake } from "@web/common";
+import { bootstrap, logger, healthCheckLoop } from "@web/common";
 import { PORT, BASE_URL } from "./config.ts";
 
 const axiosInstance = axios.create({
@@ -10,9 +10,9 @@ const axiosInstance = axios.create({
 const app = bootstrap(axiosInstance);
 
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  logger.info("Server is running", { url: `http://localhost:${PORT}` });
 
-  startHandshake(app, axiosInstance).catch((error) => {
-    console.error("Handshake failed:", error);
+  healthCheckLoop(app, axiosInstance).catch((error) => {
+    logger.error("Handshake failed", { error });
   });
 });
