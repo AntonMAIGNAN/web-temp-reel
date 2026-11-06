@@ -36,6 +36,7 @@ export const receiveSyn = async (
 
   logger.info("Received SYN, sending SYN-ACK", { origin: checkedOrigin.data });
   updateKnownState(knowns, checkedOrigin.data, STATES.SYN_ACK);
+
   await axiosInstance.post(`${checkedOrigin.data}/${STATES.SYN_ACK}`);
 
   return { status: status.ACCEPTED, data: true };

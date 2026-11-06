@@ -19,3 +19,8 @@ export const IngressBodySchema = z.object({
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 export type IngressBody = z.infer<typeof IngressBodySchema>;
+
+export const PeersResponseSchema = z.array(
+  z.object({ id: z.string().min(1), url: z.url() }),
+);
+export type PeersResponse = z.infer<typeof PeersResponseSchema>;
