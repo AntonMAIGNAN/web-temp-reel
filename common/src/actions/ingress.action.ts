@@ -3,7 +3,7 @@ import { status } from "http-status";
 import { IngressBodySchema } from "../contract.ts";
 import { isAuthorizedState, STATES } from "../constants.ts";
 import { type Action, type KnownState } from "../types.ts";
-import { checkOrigin } from "./checkOrigin.utils.ts";
+import { checkOrigin } from "../utils/checkOrigin.utils.ts";
 import { logger } from "../logger.ts";
 
 export type Message = {

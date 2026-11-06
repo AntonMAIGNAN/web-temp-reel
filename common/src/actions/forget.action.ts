@@ -2,7 +2,7 @@ import { logger } from "../logger.ts";
 import { type Action, type KnownState } from "../types.ts";
 import { isAuthorizedState, STATES } from "../constants.ts";
 import { status } from "http-status";
-import { checkOrigin } from "./checkOrigin.utils.ts";
+import { checkOrigin } from "../utils/checkOrigin.utils.ts";
 
 export const forgetHost = (
   knowns: KnownState,

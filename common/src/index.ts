@@ -5,31 +5,13 @@ import express, {
   type Response,
 } from "express";
 import { type AxiosInstance } from "axios";
-import { OriginHeadersSchema } from "./contract.ts";
-import { type Action, type KnownState } from "./types.ts";
-import { forgetHost } from "./actions/forget.action.ts";
-import {
-  receiveAck,
-  receivePong,
-  receiveSyn,
-  receiveSynAck,
-} from "./actions/handshake.action.ts";
+import { type KnownState } from "./types.ts";
 import { receiveIngress, type Message } from "./actions/ingress.action.ts";
 import { isAuthorizedState } from "./constants.ts";
-import { checkHealth } from "./actions/health.action.ts";
 import { logger } from "./logger.ts";
+import { createUrlRouter } from "./routers/url.router.ts";
 
 export { logger };
-
-const parseOrigin = (origin: unknown): string | undefined => {
-  const result = OriginHeadersSchema.safeParse({ origin });
-  return result.success ? result.data.origin : undefined;
-};
-
-const respond = (res: Response, result: Action<boolean>) =>
-  result.data
-    ? res.sendStatus(result.status)
-    : res.status(result.status).send({ error: result.error });
 
 const expBackoff = async <T>({
   attempt,
@@ -73,52 +55,13 @@ export const bootstrap = (axiosInstance: AxiosInstance): Express => {
   app.use(express.json());
   app.locals.knowns = knowns;
   app.locals.messages = messages;
-
-  app.post("/syn", async (req, res) =>
-    respond(
-      res,
-      await receiveSyn(knowns, axiosInstance, parseOrigin(req.headers.origin)),
-    ),
-  );
-
-  app.post("/syn-ack", async (req, res) =>
-    respond(
-      res,
-      await receiveSynAck(
-        knowns,
-        axiosInstance,
-        parseOrigin(req.headers.origin),
-      ),
-    ),
-  );
-
-  app.post("/ack", (req, res) =>
-    respond(res, receiveAck(knowns, parseOrigin(req.headers.origin))),
-  );
-
-  app.post("/forget", (req, res) =>
-    respond(res, forgetHost(knowns, parseOrigin(req.headers.origin))),
-  );
-
-  app.get("/health", async (req, res) => {
-    return respond(res, await checkHealth(axiosInstance, req.headers.origin));
-  });
-
-  app.post("/pong", (req, res) =>
-    respond(res, receivePong(knowns, parseOrigin(req.headers.origin))),
-  );
-
-  app.post("/ingress", (req, res) =>
-    respond(
-      res,
-      receiveIngress(
-        knowns,
-        messages,
-        processedIngressRequests,
-        parseOrigin(req.headers.origin),
-        req.body,
-      ),
-    ),
+  app.use(
+    createUrlRouter({
+      axiosInstance,
+      knowns,
+      messages,
+      processedIngressRequests,
+    }),
   );
 
   app.use(
