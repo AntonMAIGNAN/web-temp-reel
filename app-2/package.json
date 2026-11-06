@@ -5,7 +5,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "start": "node src/app.ts"
+    "start": "node --watch src/app.ts"
   },
   "dependencies": {
     "@web/common": "file:../common",
