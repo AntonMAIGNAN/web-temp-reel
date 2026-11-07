@@ -7,6 +7,7 @@ import { checkOrigin } from "../utils/checkOrigin.utils.ts";
 export const forgetHost = (
   knowns: KnownState,
   origin?: string,
+  onForget?: (origin: string) => void,
 ): Action<boolean> => {
   const checkedOrigin = checkOrigin(origin);
 
@@ -29,6 +30,8 @@ export const forgetHost = (
   }
 
   knowns.delete(checkedOrigin.data);
+  onForget?.(checkedOrigin.data);
+
   logger.info("Forgetting host", { origin: checkedOrigin.data });
   return { status: status.NO_CONTENT, data: true };
 };

@@ -3,30 +3,28 @@ import {
   bootstrap,
   logger,
   healthCheckLoop,
-  registerToBroker,
+  trackerLoop,
   unregisterFromBroker,
 } from "@web/common";
 import { PORT, BASE_URL, BROKER_URL, PEER_ID } from "./config.ts";
 
 const axiosInstance = axios.create({
   headers: { Origin: BASE_URL },
-  timeout: 5000,
+  timeout: 15000,
 });
 
-const app = bootstrap(axiosInstance, { brokerUrl: BROKER_URL });
+const app = bootstrap(axiosInstance, {
+  brokerUrl: BROKER_URL,
+  selfUrl: BASE_URL,
+});
 
 const server = app.listen(PORT, () => {
   logger.info("Server is running", { url: `http://localhost:${PORT}` });
 
-  registerToBroker(axiosInstance, BROKER_URL, {
-    id: PEER_ID,
-    url: BASE_URL,
-  }).catch((error) => {
-    logger.error("Broker registration failed", { error });
-  });
+  trackerLoop(axiosInstance, BROKER_URL, { id: PEER_ID, url: BASE_URL });
 
   healthCheckLoop(app, axiosInstance).catch((error) => {
-    logger.error("Handshake failed", { error });
+    logger.error("Health check failed", { error });
   });
 });
 

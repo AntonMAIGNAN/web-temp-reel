@@ -1,13 +1,13 @@
 import { type AxiosInstance } from "axios";
 import { status } from "http-status";
 import { PeersResponseSchema } from "../contract.ts";
-import { type Action, type Peers } from "../types.ts";
+import { type Action, type KnownState, type Peers } from "../types.ts";
 import { checkOrigin } from "../utils/checkOrigin.utils.ts";
 import { logger } from "../logger.ts";
+import { initiateHandshake } from "./handshake.action.ts";
 
 export const receivePeers = (
   peers: Peers,
-  brokerUrl: string,
   origin: string | undefined,
   body: unknown,
 ): Action<boolean> => {
@@ -21,15 +21,15 @@ export const receivePeers = (
     };
   }
 
-  if (new URL(checkedOrigin.data).origin !== new URL(brokerUrl).origin) {
-    logger.warn("Rejected peer list from non-broker origin", {
+  if (Array.from(peers.keys()).includes(checkedOrigin.data)) {
+    logger.warn("Rejected peer list from unknown origin", {
       origin: checkedOrigin.data,
     });
 
     return {
       status: status.FORBIDDEN,
       data: false,
-      error: "Only the broker can push peers",
+      error: "Only the broker and registered peers can push peers",
     };
   }
 
@@ -46,14 +46,38 @@ export const receivePeers = (
     };
   }
 
+  const brokerUrl = peers.get("broker");
+
   peers.clear();
+
+  if (brokerUrl) {
+    peers.set("broker", brokerUrl);
+  }
+
   for (const { id, url } of parsed.data) {
-    peers.set(id, new URL(url).origin);
+    peers.set(id, url.replace(/\/+$/, ""));
   }
 
   logger.info("Peers updated by broker", { peers: Object.fromEntries(peers) });
 
   return { status: status.NO_CONTENT, data: true };
+};
+
+export const brokerSyn = async (
+  peers: Peers,
+  knowns: KnownState,
+  axiosInstance: AxiosInstance,
+  id: string,
+  onFail?: (origin: string) => void,
+): Promise<Action<boolean>> => {
+  const url = peers.get(id);
+
+  if (!url) {
+    logger.warn("Unknown peer id", { id });
+    return { status: status.NOT_FOUND, data: false, error: "Unknown peer id" };
+  }
+
+  return initiateHandshake(knowns, axiosInstance, url, onFail);
 };
 
 export const registerToBroker = async (
@@ -74,4 +98,33 @@ export const unregisterFromBroker = async (
     `${brokerUrl}/unregister/${encodeURIComponent(id)}`,
   );
   logger.info("Unregistered from broker", { brokerUrl, id });
+};
+
+export const checkTracker = async (
+  axiosInstance: AxiosInstance,
+  brokerUrl: string,
+  peer: { id: string; url: string },
+  wasUp: boolean,
+): Promise<boolean> => {
+  try {
+    await axiosInstance.get(brokerUrl, { validateStatus: () => true });
+  } catch {
+    if (wasUp) {
+      logger.warn("Tracker unreachable, falling back to neighbors", {
+        brokerUrl,
+      });
+    }
+    return false;
+  }
+
+  if (!wasUp) {
+    try {
+      await registerToBroker(axiosInstance, brokerUrl, peer);
+    } catch (error) {
+      logger.warn("Tracker registration failed", { brokerUrl, error });
+      return false;
+    }
+  }
+
+  return true;
 };

@@ -5,16 +5,20 @@ import express, {
   type Response,
 } from "express";
 import { type AxiosInstance } from "axios";
-import { type KnownState, type Peers } from "./types.ts";
-import { type Message } from "./actions/ingress.action.ts";
+import { type AppLocals } from "./types.ts";
 import { isAuthorizedState } from "./constants.ts";
 import { logger } from "./logger.ts";
 import { createUrlRouter } from "./routers/url.router.ts";
 import { createPeersRouter } from "./routers/peers.router.ts";
 import {
+  checkTracker,
   registerToBroker,
   unregisterFromBroker,
 } from "./actions/peers.action.ts";
+import { forgetPeerKey, storePeerKey } from "./actions/broker.action.ts";
+import { createIdentity } from "./crypto.ts";
+import { createSigner } from "./signature.ts";
+import { createSignatureMiddleware } from "./middlewares/signature.middleware.ts";
 
 export { logger, registerToBroker, unregisterFromBroker };
 
@@ -53,27 +57,53 @@ const expBackoff = async <T>({
 
 export const bootstrap = (
   axiosInstance: AxiosInstance,
-  { brokerUrl }: { brokerUrl: string },
+  { brokerUrl, selfUrl }: { brokerUrl: string; selfUrl: string },
 ): Express => {
   const app = express();
-  const knowns: KnownState = new Map();
-  const peers: Peers = new Map();
-  const messages: Message[] = [];
-  const processedIngressRequests = new Set<string>();
+
+  const defaultLocals: AppLocals = {
+    knowns: new Map(),
+    peers: new Map([["broker", brokerUrl]]),
+    messages: [],
+    publicKeys: new Map(),
+    secrets: new Map(),
+    identity: createIdentity(),
+    selfUrl,
+    seenLookups: new Set<string>(),
+    relayedMessages: new Set<string>(),
+    missedPongs: new Map<string, number>(),
+  };
+
+  axiosInstance.interceptors.request.use(createSigner(defaultLocals.identity));
 
   app.use(express.json());
-  app.locals.knowns = knowns;
-  app.locals.peers = peers;
-  app.locals.messages = messages;
 
-  app.use(createPeersRouter({ peers, brokerUrl }));
+  app.use(createSignatureMiddleware(defaultLocals.publicKeys));
+
+  const locals: AppLocals = Object.assign(app.locals, {
+    ...defaultLocals,
+    selfUrl,
+    seenLookups: new Set<string>(),
+    relayedMessages: new Set<string>(),
+  });
+
+  app.use(
+    createPeersRouter({
+      axiosInstance,
+      peers: locals.peers,
+    }),
+  );
 
   app.use(
     createUrlRouter({
       axiosInstance,
-      knowns,
-      messages,
-      processedIngressRequests,
+      knowns: locals.knowns,
+      messages: locals.messages,
+      processedIngressRequests: locals.seenLookups,
+      secrets: locals.secrets,
+      onPeerKey: (origin, keyid) => storePeerKey(locals, origin, keyid),
+      onForget: (origin) => forgetPeerKey(locals, origin),
+      onPong: (origin) => locals.missedPongs.delete(origin),
     }),
   );
 
@@ -87,33 +117,74 @@ export const bootstrap = (
   return app;
 };
 
+const HEALTH_INTERVAL_MS = 10000;
+const MAX_MISSED_PONGS = 5;
+
+export const checkPeersHealth = async (
+  app: Express,
+  axiosInstance: AxiosInstance,
+  { maxAttempts = 5 }: { maxAttempts?: number } = {},
+) => {
+  const locals = app.locals as AppLocals;
+
+  const forget = (host: string, reason: string) => {
+    logger.warn("Forgetting unhealthy peer", { host, reason });
+    locals.knowns.delete(host);
+    forgetPeerKey(locals, host);
+  };
+
+  const healthChecks = Array.from(locals.knowns.entries()).map(
+    async ([host, state]) => {
+      if (!isAuthorizedState(state)) return;
+
+      const missed = locals.missedPongs.get(host) ?? 0;
+
+      if (missed >= MAX_MISSED_PONGS) {
+        forget(host, `${missed} /health without /pong`);
+        return;
+      }
+
+      locals.missedPongs.set(host, missed + 1);
+
+      try {
+        await expBackoff({
+          attempt: 1,
+          maxAttempts,
+          maxDelay: 30000,
+          callback: () => axiosInstance.get(`${host}/health`),
+        });
+      } catch {
+        forget(host, "no answer after retries");
+      }
+    },
+  );
+
+  await Promise.all(healthChecks);
+
+  logger.info("Peer health check completed", {
+    knowns: Object.fromEntries(locals.knowns),
+  });
+};
+
 export const healthCheckLoop = async (
   app: Express,
   axiosInstance: AxiosInstance,
 ) => {
-  const knowns = app.locals.knowns as KnownState;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, HEALTH_INTERVAL_MS));
+    await checkPeersHealth(app, axiosInstance);
+  } while (true);
+};
+
+export const trackerLoop = async (
+  axiosInstance: AxiosInstance,
+  brokerUrl: string,
+  peer: { id: string; url: string },
+) => {
+  let isUp = false;
 
   do {
+    isUp = await checkTracker(axiosInstance, brokerUrl, peer, isUp);
     await new Promise((resolve) => setTimeout(resolve, 15000));
-
-    const healthChecks = Array.from(knowns.entries()).map(([host, state]) => {
-      if (isAuthorizedState(state)) {
-        return expBackoff({
-          attempt: 1,
-          maxDelay: 30000,
-          callback: async () => {
-            await axiosInstance.get(`${host}/health`);
-            return true;
-          },
-        });
-      }
-      return Promise.resolve(false);
-    });
-
-    await Promise.all(healthChecks);
-
-    logger.info("Peer health check completed", {
-      knowns: Object.fromEntries(knowns),
-    });
   } while (true);
 };
