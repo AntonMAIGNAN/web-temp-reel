@@ -9,7 +9,7 @@ import {
 } from "../actions/handshake.action.ts";
 import { receiveIngress, type Message } from "../actions/ingress.action.ts";
 import { checkHealth } from "../actions/health.action.ts";
-import { type KnownState } from "../types.ts";
+import { type KnownState, type Secrets } from "../types.ts";
 import { respondAction } from "../utils/action.utils.ts";
 
 export type UrlRouterDependencies = {
@@ -17,6 +17,10 @@ export type UrlRouterDependencies = {
   knowns: KnownState;
   messages: Message[];
   processedIngressRequests: Set<string>;
+  secrets: Secrets;
+  onPeerKey: (origin: string, keyid: string | undefined) => void;
+  onForget: (origin: string) => void;
+  onPong: (origin: string) => void;
 };
 
 export const createUrlRouter = ({
@@ -24,26 +28,50 @@ export const createUrlRouter = ({
   knowns,
   messages,
   processedIngressRequests,
+  secrets,
+  onPeerKey,
+  onForget,
+  onPong,
 }: UrlRouterDependencies) => {
   const router = Router();
 
   router.post("/syn", async (req, res) =>
-    respondAction(res, await receiveSyn(knowns, axiosInstance, req.headers.origin)),
+    respondAction(
+      res,
+      await receiveSyn(
+        knowns,
+        axiosInstance,
+        req.headers.origin,
+        (origin) => onPeerKey(origin, res.locals.keyid),
+        onForget,
+      ),
+    ),
   );
 
   router.post("/syn-ack", async (req, res) =>
     respondAction(
       res,
-      await receiveSynAck(knowns, axiosInstance, req.headers.origin),
+      await receiveSynAck(
+        knowns,
+        axiosInstance,
+        req.headers.origin,
+        (origin) => onPeerKey(origin, res.locals.keyid),
+        onForget,
+      ),
     ),
   );
 
   router.post("/ack", (req, res) =>
-    respondAction(res, receiveAck(knowns, req.headers.origin)),
+    respondAction(
+      res,
+      receiveAck(knowns, req.headers.origin, (origin) =>
+        onPeerKey(origin, res.locals.keyid),
+      ),
+    ),
   );
 
   router.post("/forget", (req, res) =>
-    respondAction(res, forgetHost(knowns, req.headers.origin)),
+    respondAction(res, forgetHost(knowns, req.headers.origin, onForget)),
   );
 
   router.get("/health", async (req, res) =>
@@ -51,7 +79,7 @@ export const createUrlRouter = ({
   );
 
   router.post("/pong", (req, res) =>
-    respondAction(res, receivePong(knowns, req.headers.origin)),
+    respondAction(res, receivePong(knowns, req.headers.origin, onPong)),
   );
 
   router.post("/ingress", (req, res) =>
@@ -63,6 +91,7 @@ export const createUrlRouter = ({
         processedIngressRequests,
         req.headers.origin,
         req.body,
+        secrets,
       ),
     ),
   );

@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
 import { status } from "http-status";
-import { IngressBodySchema } from "../contract.ts";
-import { isAuthorizedState, STATES } from "../constants.ts";
-import { type Action, type KnownState } from "../types.ts";
+import {
+  ClearPayloadSchema,
+  EncryptedPayloadSchema,
+  IngressBodySchema,
+} from "../contract.ts";
+import { decrypt } from "../crypto.ts";
+import { isAuthorizedState } from "../constants.ts";
+import { type Action, type KnownState, type Secrets } from "../types.ts";
 import { checkOrigin } from "../utils/checkOrigin.utils.ts";
 import { logger } from "../logger.ts";
 
@@ -16,28 +21,13 @@ export type Message = {
   payload?: Record<string, unknown>;
 };
 
-const stableSerialize = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableSerialize).join(",")}]`;
-  }
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(
-        ([key, nestedValue]) =>
-          `${JSON.stringify(key)}:${stableSerialize(nestedValue)}`,
-      )
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-};
-
 export const receiveIngress = (
   knowns: KnownState,
   messages: Message[],
   processedRequests: Set<string>,
   origin: string | undefined,
   body: unknown,
+  secrets: Secrets,
 ): Action<boolean> => {
   const checkedOrigin = checkOrigin(origin);
   if (checkedOrigin.status !== status.OK) {
@@ -74,10 +64,42 @@ export const receiveIngress = (
     };
   }
 
-  const { action, metadata, payload } = parsedBody.data;
+  const { action, metadata } = parsedBody.data;
+
+  const secret = secrets.get(checkedOrigin.data);
+  const encrypted = EncryptedPayloadSchema.safeParse(parsedBody.data.payload);
+
+  if (!secret || !encrypted.success) {
+    logger.warn("Rejected unencrypted ingress", { origin: checkedOrigin.data });
+
+    return {
+      status: status.FORBIDDEN,
+      data: false,
+      error: secret ? "Encrypted payload required" : "No shared secret",
+    };
+  }
+
+  let payload: Record<string, unknown> | undefined;
+  try {
+    const clear = ClearPayloadSchema.parse(
+      decrypt(secret, encrypted.data.enc, JSON.stringify(metadata)),
+    );
+
+    payload = clear ?? undefined;
+  } catch {
+    logger.warn("Rejected undecryptable ingress message", {
+      origin: checkedOrigin.data,
+    });
+
+    return {
+      status: status.BAD_REQUEST,
+      data: false,
+      error: "Cannot decrypt payload",
+    };
+  }
 
   const hash = createHash("sha256")
-    .update(stableSerialize(parsedBody.data))
+    .update(JSON.stringify({ action, metadata, payload }))
     .digest("hex");
 
   if (processedRequests.has(hash)) {
@@ -95,6 +117,7 @@ export const receiveIngress = (
   }
 
   processedRequests.add(hash);
+
   messages.push({
     action,
     metadata: {
