@@ -14,6 +14,7 @@ Le tracker est dans un autre repo (`web-temp-reel-B`, port 4000).
 ## Lancer
 
 Prérequis : Node.js ≥ 22.18.
+Et un tracker : https://github.com/SmaleFr/web-temp-reel-B
 
 ```bash
 cd common && npm install
