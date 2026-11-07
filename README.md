@@ -1,4 +1,4 @@
-# Web en temps réel — réseau P2P
+# Web en temps réel
 
 Serveurs pair-à-pair (`app-1`, `app-2`, …) qui se découvrent via un tracker, font un handshake sécurisé, puis s'échangent des messages **chiffrés**, lisibles uniquement par le serveur destinataire du lien.
 
@@ -13,7 +13,7 @@ Le tracker est dans un autre repo (`web-temp-reel-B`, port 4000).
 
 ## Lancer
 
-Prérequis : Node.js ≥ 22.18 (TypeScript exécuté directement par Node).
+Prérequis : Node.js ≥ 22.18.
 
 ```bash
 cd common && npm install
@@ -49,7 +49,7 @@ Forme JSON : `{ "sig1": { "keyid": "<clé publique>" } }`.
 
 - `401` : header absent, mal formé, ou `keyid` invalide (l'émetteur n'est pas identifié).
 - `403` : un serveur déjà connu présente une autre clé que celle échangée au handshake.
-- Exemptées : `POST /register` (push du tracker), `POST /broker/syn/:id` et `POST /broker/send/:id` (commandes locales).
+- Exemptées : `POST /register` (push du tracker), `POST /broker/syn/:id` et `POST /broker/send/:id`.
 
 Au handshake, chaque serveur combine **sa clé privée** avec **la clé publique de l'autre** (Diffie-Hellman) : les deux obtiennent le même secret, sans l'envoyer. Les messages `/ingress` sont chiffrés avec ce secret :
 
@@ -131,8 +131,6 @@ Toutes les routes peuvent aussi répondre `500` (erreur serveur). Body d'erreur 
 | broker  | `POST /broker/send/:id` `{ action, payload? }` | `202`, `400`, `404`, `502`                      |
 | broker  | `POST /broker/lookup/:id` `{ reqId }`          | `200 { id, url }`, `400`, `401`, `403`, `404`   |
 | broker  | `POST /broker/relay/:id` (body `/ingress`)     | `202`, `400`, `401`, `403`, `404`, `502`, `508` |
-
-Le détail de chaque code est dans la collection Postman et dans `x-routes` de la spec JSON.
 
 ### Écarts avec le protocole commun
 
