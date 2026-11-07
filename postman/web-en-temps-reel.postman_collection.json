@@ -1,0 +1,543 @@
+{
+  "info": {
+    "name": "Web en temps réel",
+    "description": "",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "id": "d9211244-a142-4ba2-8dca-dcd5bdf8e765",
+      "name": "Tracker",
+      "description": "",
+      "item": [
+        {
+          "name": "/register",
+          "request": {
+            "method": "POST",
+            "description": "**Body**\n\n```json\n{ \"id\": \"string\", \"url\": \"url\" }\n```\n\n**Réponses possibles**\n\n- `204` : serveur enregistré, liste poussée à tous les serveurs\n- `400` : JSON mal formé",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{tracker_url}}/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"app-1\",\n  \"url\": \"{{app1_url}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/unregister/:id",
+          "request": {
+            "method": "DELETE",
+            "description": "**Paramètres**\n\n- `id` (chemin) : id du serveur à retirer (variable `{{peer_id}}`)\n\n**Réponses possibles**\n\n- `204` : serveur retiré, nouvelle liste poussée aux serveurs restants\n- `404` : id inconnu",
+            "header": [],
+            "url": "{{tracker_url}}/unregister/{{peer_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204 ou 404\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204, 404]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "4559c211-2763-4947-9108-361e64bfc156",
+      "name": "Socket",
+      "description": "",
+      "item": [
+        {
+          "name": "/register",
+          "request": {
+            "method": "POST",
+            "description": "**Body**\n\n```json\n[ { \"id\": \"string\", \"url\": \"url\" } ]\n```\n\n**Réponses possibles**\n\n- `204` : liste des pairs acceptée\n- `400` : `Origin` invalide, ou body différent de `[{ id, url }]`\n- `403` : origine refusée",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{tracker_url}}"
+              }
+            ],
+            "url": "{{app1_url}}/register",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"id\": \"app-1\",\n    \"url\": \"{{app1_url}}\"\n  },\n  {\n    \"id\": \"app-2\",\n    \"url\": \"{{app2_url}}\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/syn",
+          "request": {
+            "method": "POST",
+            "description": "**Réponses possibles**\n\n- `202` : SYN reçu, SYN-ACK envoyé à l'`Origin`\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `500` : SYN-ACK échoué après 3 essais, handshake oublié",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/syn"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 202 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([202, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/syn-ack",
+          "request": {
+            "method": "POST",
+            "description": "**Réponses possibles**\n\n- `202` : SYN-ACK reçu, ACK envoyé à l'`Origin`\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : aucun `/syn` envoyé à cet `Origin` (jamais contacté)\n- `500` : ACK échoué après 3 essais, handshake oublié",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/syn-ack"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 202 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([202, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/ack",
+          "request": {
+            "method": "POST",
+            "description": "**Réponses possibles**\n\n- `204` : handshake terminé\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : SYN-ACK pas encore envoyé à cet `Origin`, ou `keyid` différent",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/ack"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/forget",
+          "request": {
+            "method": "POST",
+            "description": "**Réponses possibles**\n\n- `204` : serveur oublié (knowns, clé et secret)\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : `Origin` sans handshake, ou `keyid` différent",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/forget"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/health",
+          "request": {
+            "method": "GET",
+            "description": "Envoyé toutes les 10 s à chaque pair connecté. Le pair est oublié après échec du back-off (5 essais) ou après 5 `/health` sans `/pong` en retour.\n\n**Réponses possibles**\n\n- `202` : vivant, pong envoyé à l'`Origin`\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : `keyid` différent de celui échangé au handshake\n- `500` : le pong vers l'`Origin` a échoué",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 202 ou 403 ou 500\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([202, 403, 500]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/pong",
+          "request": {
+            "method": "POST",
+            "description": "**Réponses possibles**\n\n- `204` : pong accepté\n- `400` : `Origin` invalide\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : serveur inconnu, ou `keyid` différent",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/pong"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 204 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([204, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "/ingress",
+          "request": {
+            "method": "POST",
+            "description": "**Body**\n\n```json\n{\n  \"action\": \"string\",\n  \"metadata\": { \"source\": \"url\", \"target\": \"url\", \"timestamp\": \"ISO 8601\" },\n  \"payload\": { \"enc\": { \"iv\": \"base64\", \"ct\": \"base64\", \"tag\": \"base64\" } }\n}\n```\n\n**Réponses possibles**\n\n- `201` : message déchiffré et stocké\n- `208` : message déjà reçu (doublon)\n- `400` : `Origin` invalide, body invalide, ou payload indéchiffrable\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : `Origin` sans handshake, pas de secret partagé, payload en clair, ou `keyid` différent",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{origin_url}}"
+              },
+              {
+                "key": "Signature-Input",
+                "value": "sig1=();keyid=\"{{keyid}}\""
+              }
+            ],
+            "url": "{{app1_url}}/ingress",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"hello\",\n  \"metadata\": {\n    \"source\": \"{{origin_url}}\",\n    \"target\": \"{{app1_url}}\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  },\n  \"payload\": {\n    \"enc\": {\n      \"iv\": \"<base64>\",\n      \"ct\": \"<base64>\",\n      \"tag\": \"<base64>\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status attendu : 201 ou 208 ou 403\", () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 208, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "AS broker",
+          "description": "",
+          "item": [
+            {
+              "name": "/broker/syn/:id",
+              "request": {
+                "method": "POST",
+                "description": "**Paramètres**\n\n- `id` (chemin) : id du pair, tel que dans la liste du tracker (variable `{{peer_id}}`)\n\n**Réponses possibles**\n\n- `202` : handshake terminé (le serveur envoie `/syn`, le pair répond `/syn-ack`, le serveur répond `/ack`)\n- `404` : id absent de la liste des pairs\n- `500` : le pair ne répond pas, tentative oubliée",
+                "header": [],
+                "url": "{{app1_url}}/broker/syn/{{peer_id}}"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status attendu : 202\", () => {",
+                      "  pm.expect(pm.response.code).to.be.oneOf([202]);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "/broker/send/:id",
+              "request": {
+                "method": "POST",
+                "description": "**Paramètres**\n\n- `id` (chemin) : id du pair, tel que dans la liste du tracker (variable `{{peer_id}}`)\n\n**Body**\n\n```json\n{ \"action\": \"string\", \"payload\": { } }\n```\n`payload` est optionnel (objet libre).\n\n**Réponses possibles**\n\n- `202` : message livré (direct ou par relais)\n- `400` : body différent de `{ action, payload? }`\n- `404` : personne ne connaît l'id\n- `502` : pair trouvé mais injoignable, même par relais",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{app1_url}}/broker/send/{{peer_id}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"hello\",\n  \"payload\": {\n    \"text\": \"Salut depuis app-1\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status attendu : 202\", () => {",
+                      "  pm.expect(pm.response.code).to.be.oneOf([202]);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "/broker/lookup/:id",
+              "request": {
+                "method": "POST",
+                "description": "**Paramètres**\n\n- `id` (chemin) : id du pair, tel que dans la liste du tracker (variable `{{peer_id}}`)\n\n**Body**\n\n```json\n{ \"reqId\": \"string\" }\n```\n`reqId` : identifiant unique de la recherche (anti-boucle).\n\n**Réponses possibles**\n\n- `200` : `{ id, url }` du pair trouvé\n- `400` : body différent de `{ reqId }`\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : `Origin` n'est pas un voisin, ou `keyid` différent\n- `404` : personne ne connaît l'id (ou `reqId` déjà vu)",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Origin",
+                    "value": "{{origin_url}}"
+                  },
+                  {
+                    "key": "Signature-Input",
+                    "value": "sig1=();keyid=\"{{keyid}}\""
+                  }
+                ],
+                "url": "{{app1_url}}/broker/lookup/{{peer_id}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reqId\": \"{{$guid}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status attendu : 200 ou 403 ou 404\", () => {",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "/broker/relay/:id",
+              "request": {
+                "method": "POST",
+                "description": "**Paramètres**\n\n- `id` (chemin) : id du pair, tel que dans la liste du tracker (variable `{{peer_id}}`)\n\n**Body**\n\n```json\n{\n  \"action\": \"string\",\n  \"metadata\": { \"source\": \"url\", \"target\": \"url\", \"timestamp\": \"ISO 8601\" },\n  \"payload\": { \"enc\": { \"iv\": \"base64\", \"ct\": \"base64\", \"tag\": \"base64\" } }\n}\n```\nPayload chiffré avec le secret partagé avec le serveur appelé.\n\n**Réponses possibles**\n\n- `202` : message transmis\n- `400` : body invalide ou payload indéchiffrable\n- `401` : header `Signature-Input` absent, mal formé, ou `keyid` invalide\n- `403` : `Origin` n'est pas un voisin, ou `keyid` différent\n- `404` : id inconnu\n- `502` : destinataire injoignable\n- `508` : message déjà relayé (boucle)",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Origin",
+                    "value": "{{origin_url}}"
+                  },
+                  {
+                    "key": "Signature-Input",
+                    "value": "sig1=();keyid=\"{{keyid}}\""
+                  }
+                ],
+                "url": "{{app1_url}}/broker/relay/{{peer_id}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"hello\",\n  \"metadata\": {\n    \"source\": \"{{origin_url}}\",\n    \"target\": \"{{app1_url}}\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  },\n  \"payload\": {\n    \"enc\": {\n      \"iv\": \"<base64>\",\n      \"ct\": \"<base64>\",\n      \"tag\": \"<base64>\"\n    }\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status attendu : 202 ou 403\", () => {",
+                      "  pm.expect(pm.response.code).to.be.oneOf([202, 403]);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "tracker_url",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "app1_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "app2_url",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "origin_url",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "keyid",
+      "value": "E42bmJn_O64tY59y0qYj74OnJGEuIxrxNI_F19MMsXc"
+    },
+    {
+      "key": "peer_id",
+      "value": "app-2"
+    }
+  ]
+}
